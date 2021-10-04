@@ -1,4 +1,16 @@
 /**
+ *Submitted for verification at BscScan.com on 2021-09-30
+*/
+
+/**
+ *Submitted for verification at BscScan.com on 2021-09-20
+*/
+
+/**
+ *Submitted for verification at BscScan.com on 2021-09-08
+*/
+
+/**
  *Submitted for verification at BscScan.com on 2021-03-16
 */
 
@@ -762,98 +774,107 @@ interface VaiyoToken {
 contract LockVaiyo is Ownable {
     using SafeMath for uint256;
 
-    VaiyoToken public token;
-    AggregatorV3Interface public priceFeed;
-    mapping(address => uint256) public deposits;
+    VaiyoToken private token;
+    AggregatorV3Interface private priceFeed;
+    mapping(address => uint256) public depositsBNB;
+    mapping(address => uint256) public depositsBUSD;
+    mapping(address => uint256) public lockedVAIYO;
     mapping(address => uint256) public deposittimes;
-    uint256 public totalBNB;
-    uint256 public minimumDepositEthAmount = 0 ether;
-    uint256 public totallockTime = 10 minutes;//180 days;
+    uint256 public totalLockedVAIYO = 0 ether;
+    uint256 public totallockTime = 180 days;
     uint256 public minDepositAmount = 25 / 10 * (10 ** 18); //2.5busd
     uint256 tokensAmountForBUSD = 0.12 ether; // 1 tokens per 0.12busd
-    address VaiyoTokenAddress = 0x3567C6B2072B70d375749D07bA5c4f62adC1b398;//testnet
-    // address VaiyoTokenAddress = 0xBA19f24dFCf7f795D90c0404d104680dB28BAC2b;//mainnet
+    address private busdAddress = 0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56; //for mainnet
+    //address private busdAddress = 0x8301F2213c0eeD49a7E28Ae4c3e91722919B8B47; //for testnet
     
-    //0x028C98fB13F551FaF5EfF0Dec5c80B98CFf706A5    //vaiyo my mainnet
-    //0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526    //bnb/usd
-    //0x87Ea38c9F24264Ec1Fff41B04ec94a97Caf99941     //busd/bnb
-    
-    
-    //first resutl 0x1d1000275eCdd2bD5c7b2F6185d540C3B150a762
-    
-
-    constructor(VaiyoToken _token, AggregatorV3Interface _priceFeed) public {
-        token = _token;
-        priceFeed = _priceFeed;
-    }
-
-    receive() payable external {
-        deposit();
-    }
-
-    function deposit() public payable {
-        require(getUSDAmount(msg.value) >= minDepositAmount, "Mimumn amount is 2.5BUSD");
+    // VaiyoToken : 0x87d548975a904Fbb23b0fD773eaA789f6e671Cb1; //for testnet
+    // VaiyoToken : 0xBA19f24dFCf7f795D90c0404d104680dB28BAC2b; //for mainnet
         
-    	deposits[msg.sender] = deposits[msg.sender].add(msg.value);
+    constructor(VaiyoToken _token) public {
+        token = _token;
+        priceFeed = AggregatorV3Interface(0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE);//for mainnet
+        //priceFeed = AggregatorV3Interface(0x2514895c72f50D8bd4B4F9b1110F0D6bD2c97526);//for testnet
+    }
+
+    function depositBUSD(uint256 amnt) public {
+        require(amnt >= minDepositAmount, "Minimum amount is 2.5BUSD");
+        
+        IBEP20(busdAddress).transferFrom(msg.sender, address(this), amnt);
+        
+        uint256 tokenAmount = getTokensAmount(amnt);
+        
+        depositsBUSD[msg.sender] = depositsBUSD[msg.sender].add(amnt);
+    	lockedVAIYO[msg.sender] = lockedVAIYO[msg.sender].add(tokenAmount);
     	deposittimes[msg.sender] = now;
-    	totalBNB.add(msg.value);
+    	totalLockedVAIYO = totalLockedVAIYO.add(tokenAmount);
     }
-
-    function read(address add) public view returns(uint256, uint256, bool) {
-        uint256 tokenamount = deposits[add];
-        uint256 deposittime = totallockTime - (now - deposittimes[add]);
-        return (tokenamount, deposittime, now >= deposittimes[add] + totallockTime);
+    
+    function depositBNB() public payable {
+        require(getBUSDAmount(msg.value) >= minDepositAmount, "Minimum amount is 2.5BUSD");
+        
+        uint256 busdAmount = getBUSDAmount(msg.value);
+        uint256 tokenAmount = getTokensAmount(busdAmount);
+        
+    	depositsBNB[msg.sender] = depositsBNB[msg.sender].add(msg.value);
+    	lockedVAIYO[msg.sender] = lockedVAIYO[msg.sender].add(tokenAmount);
+    	deposittimes[msg.sender] = now;
+    	totalLockedVAIYO = totalLockedVAIYO.add(tokenAmount);
     }
-
+    
     function claimTokens() public {
-        require(deposits[msg.sender] > 0, "There are no deposited tokens for you.");
+        require(lockedVAIYO[msg.sender] > 0, "There are no deposited tokens for you.");
         require(checkTime(msg.sender), "Your tokens are locked now.");
         
-        uint256 usdAmount = getUSDAmount(deposits[msg.sender]);
-        uint256 tokenAmount = getTokensAmount(usdAmount);
-        token.transfer(msg.sender, tokenAmount);
-        deposits[msg.sender] = 0;
+        token.transfer(msg.sender, lockedVAIYO[msg.sender]);
+        totalLockedVAIYO = totalLockedVAIYO.sub(lockedVAIYO[msg.sender]);
+        lockedVAIYO[msg.sender] = 0;
+        depositsBNB[msg.sender] = 0;
+        depositsBUSD[msg.sender] = 0;
+        deposittimes[msg.sender] = 0;
     }
     
-    function claimTokens(address add) public {
-        require(deposits[add] > 0, "There are no deposited tokens for you.");
-        require(checkTime(add), "Your tokens are locked now.");
-        
-        uint256 usdAmount = getUSDAmount(deposits[add]);
-        uint256 tokenAmount = getTokensAmount(usdAmount);
-        token.transfer(add, tokenAmount);
-        deposits[add] = 0;
+    function read(address add) public view returns(uint256 _depositBNB, uint256 _depositBUSD, uint256 _lockedVAIYO, uint256 _restTime, bool _checkTime) {
+        _depositBNB = depositsBNB[add];
+        _depositBUSD = depositsBUSD[add];
+        _lockedVAIYO = lockedVAIYO[add];
+        _restTime = 0;
+        if(totallockTime >= (now - deposittimes[add]))
+            _restTime = totallockTime - (now - deposittimes[add]);
+        _checkTime = checkTime(add);
     }
 
     function getBUSDPerBNB() public view returns (uint256) {
         (
-            uint80 roundID,
+            ,
             int256 price,
-            uint256 startedAt,
-            uint256 timeStamp,
-            uint80 answeredInRound
+            ,
+            ,
+            
         ) = priceFeed.latestRoundData();
         
-        return (uint256(1e18)).div(uint256(price));
+        return (uint256(price)).div(1e8);
     }
     
-    function getUSDAmount(uint256 bnbAmount) public view returns(uint256){
-        uint256 usdAmount = bnbAmount.mul(getBUSDPerBNB());
-        return usdAmount;
+    function getBUSDAmount(uint256 bnbAmount) public view returns(uint256){
+        uint256 busdAmount = bnbAmount.mul(getBUSDPerBNB());
+        return busdAmount;
     }
     
-    function getTokensAmount(uint256 usdAmount) public view returns(uint256) {
-        
-        uint256 tokensAmount = usdAmount.mul(1e18).div(tokensAmountForBUSD);
+    function getTokensAmount(uint256 busdAmount) private view returns(uint256) {
+        uint256 tokensAmount = busdAmount.mul(1e18).div(tokensAmountForBUSD);
         return tokensAmount;
     }
 
-    function checkTime(address add) public view returns(bool) {
+    function checkTime(address add) private view returns(bool) {
         bool ret = ((deposittimes[add] != 0) && (now >= (deposittimes[add] + totallockTime)));
         return ret;
     }
 
-    function releaseFunds(uint256 amo) external onlyOwner {
+    function releaseFunds(uint256 amount) external onlyOwner {
+        msg.sender.transfer(amount);
+    }
+    
+    function releaseFundsAll() external onlyOwner {
         msg.sender.transfer(address(this).balance);
     }
 
@@ -861,6 +882,11 @@ contract LockVaiyo is Ownable {
         IBEP20(tokenAddress).transfer(this.owner(), tokenAmount);
         emit Recovered(tokenAddress, tokenAmount);
     }
-
+    
+    function recoverBUSD(uint256 tokenAmount) external onlyOwner {
+        IBEP20(busdAddress).transfer(this.owner(), tokenAmount);
+        emit Recovered(busdAddress, tokenAmount);
+    }
+    
     event Recovered(address token, uint256 amount);
 }
